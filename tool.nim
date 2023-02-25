@@ -4,6 +4,8 @@ import cligen
 import std/strformat
 import std/times
 
+import analyze
+
 proc fromEpoch(epochTime: uint64): DateTime =
     let epoch = dateTime(1970, mJan, 1, zone = utc())
     let delta = initDuration(nanoseconds = (int64)epochTime)
@@ -13,6 +15,11 @@ type Session = object
     start: uint64
     stop: uint64
     count: Natural
+
+proc bleh[T](thing: T): void =
+  const example = T()
+  for x, y in example.fieldPairs:
+    echo x
 
 proc getSessions(db: DbConn): seq[Session] =
     let query = "SELECT realtime_ns from points ORDER BY realtime_ns ASC"
@@ -52,6 +59,7 @@ proc getSessions(db: DbConn): seq[Session] =
 proc list(filename: string): void =
   let db = openDatabase(filename)
   let sessions = getSessions(db)
+  bleh(sessions[0])
   var idx = 0
   for sesh in sessions:
     let minutes = (int)(sesh.stop - sesh.start) / (1000000000 * 60)
@@ -60,4 +68,13 @@ proc list(filename: string): void =
     echo &"{idx}: {start} - {stop} ({sesh.count} points, {minutes:.1f} minutes)"
     idx += 1
 
-dispatchMulti([list])
+proc test(filename: string): void =
+  let db = openDatabase(filename)
+  echo get_rows[Point](db, 0, 1800000000000000000)[0]
+
+proc analyzef(filename: string): void =
+  let db = openDatabase(filename)
+  let rows = get_rows[Point](db, 0, 1800000000000000000)
+  echo buildInterests(rows)
+
+dispatchMulti([list], [test], [analyzef])
