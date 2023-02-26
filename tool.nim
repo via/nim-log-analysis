@@ -3,6 +3,9 @@ import tiny_sqlite
 import cligen
 import std/strformat
 import std/times
+import ggplotnim
+import ggplotnim/ggplot_vega
+
 
 import analyze
 
@@ -70,11 +73,25 @@ proc list(filename: string): void =
 
 proc test(filename: string): void =
   let db = openDatabase(filename)
-  echo get_rows[Point](db, 0, 1800000000000000000)[0]
+  echo get_rows[analyze.Point](db, 0, 1800000000000000000)[0]
 
 proc analyzef(filename: string): void =
   let db = openDatabase(filename)
-  let rows = get_rows[Point](db, 0, 1800000000000000000)
-  echo buildInterests(rows)
+  let rows = get_rows[analyze.Point](db, 0, 1800000000000000000)
+  let interests = buildInterests(rows)
+  var maps : seq[float]
+  var rpms : seq[float]
+  var corrections : seq[float]
+  var ves : seq[float]
+  var durs : seq[int]
+  for idx in interests.low..interests.high:
+    maps.add(interests[idx].map)
+    rpms.add(interests[idx].rpm)
+    corrections.add(interests[idx].correction)
+    ves.add(interests[idx].corrected_ve)
+    durs.add((int)(interests[idx].duration * 5))
+  let df = toDf({"map": maps, "rpm": rpms, "delta": corrections, "newve": ves, "durations": durs})
+#  ggplot(df, aes("rpm", "map", color="newve")) + geom_point() + ggsave("bleh.png", width=1280, height=1024)
+  ggplot(df, aes("rpm", "map", color="newve")) + geom_point() + ggvega("bleh.html", width=1600, height=1200)
 
 dispatchMulti([list], [test], [analyzef])

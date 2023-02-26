@@ -35,12 +35,14 @@ proc getRows*[T](db: DbConn, start_time: int64, end_time: int64): seq[T] =
   return rows
 
 type Interest = object
-  duration: float
-  rpm: float
-  map: float
+  duration*: float
+  rpm*: float
+  map*: float
   ve: float
   lambda: float
   ego: float
+  correction*: float
+  corrected_ve*: float
 
 type TimeRange = tuple[valid: bool, start: int, stop: int]
 
@@ -97,7 +99,8 @@ proc windowToInterest(points: seq[Point], window: TimeRange): Interest =
   interest.ve /= (float)count
   interest.lambda /= (float)count
   interest.ego /= (float)count
-
+  interest.correction = interest.ego / interest.lambda
+  interest.corrected_ve = interest.correction * interest.ve
   return interest
 
 
@@ -108,6 +111,7 @@ proc buildInterests*(points: seq[Point]): seq[Interest] =
     let window = buildWindow(points, window_start, 0.1, 1.0)
     if window.valid:
       let interest = windowToInterest(points, window)
-      result.add(interest)
+      if interest.correction > 0.6 and interest.correction < 1.3:
+        result.add(interest)
 
     window_start = window.stop + 1
