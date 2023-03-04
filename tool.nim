@@ -3,35 +3,37 @@ import tiny_sqlite
 import cligen
 import std/strformat
 import std/times
+import std/tables
+import sequtils
 
 import analyze
 
-proc fromEpoch(epochTime: uint64): DateTime =
+proc fromEpoch(epochTime: int64): DateTime =
     let epoch = dateTime(1970, mJan, 1, zone = utc())
     let delta = initDuration(nanoseconds = (int64)epochTime)
     result = epoch + delta
 
-type Session = object
-    start: uint64
-    stop: uint64
-    count: Natural
+proc toEpoch(dt: DateTime): int64 =
+    let epoch = dateTime(1970, mJan, 1, zone = utc())
+    let delta = dt - epoch
+    result = delta.inNanoseconds
 
-proc bleh[T](thing: T): void =
-  const example = T()
-  for x, y in example.fieldPairs:
-    echo x
+type Session = object
+    start: int64
+    stop: int64
+    count: Natural
 
 proc getSessions(db: DbConn): seq[Session] =
     let query = "SELECT realtime_ns from points ORDER BY realtime_ns ASC"
     var sessions : seq[Session] = @[]
     
-    var startTime : uint64 = 0
-    var last : uint64 = 0
+    var startTime : int64 = 0
+    var last : int64 = 0
     var startSeen = false
     var count = 0
 
     for row in db.iterate(query):
-        let (time) = row.unpack((uint64, ))
+        let (time) = row.unpack((int64, ))
         count += 1
 
         if not startSeen:
@@ -59,7 +61,6 @@ proc getSessions(db: DbConn): seq[Session] =
 proc list(filename: string): void =
   let db = openDatabase(filename)
   let sessions = getSessions(db)
-  bleh(sessions[0])
   var idx = 0
   for sesh in sessions:
     let minutes = (int)(sesh.stop - sesh.start) / (1000000000 * 60)
@@ -70,11 +71,30 @@ proc list(filename: string): void =
 
 proc test(filename: string): void =
   let db = openDatabase(filename)
-  echo get_rows[Point](db, 0, 1800000000000000000)[0]
+#  echo get_rows[Table](db, 0, 1800000000000000000)
 
 proc analyzef(filename: string): void =
   let db = openDatabase(filename)
   let rows = get_rows[Point](db, 0, 1800000000000000000)
-  echo buildInterests(rows)
+  let windows = buildWindows(rows, 0.1, 1.0)
+  var valids = 0.0
+  for w in windows:
+    if w[0]:
+      valids += windowToInterest(w[1]).duration
+
+  echo valids
+
+proc exportPoints(filename: string, sessionsStr = "", start = "", stop=""): void =
+  var sessions: seq[Session]
+  if sessionsStr == "":
+    # Make a fake session from the time range
+    let startDt = parse("yyyy-MM-dd'T'HH:mm:sszzz", start)
+    let stopDt = parse("yyyy-MM-dd'T'HH:mm:sszzz", stop)
+    sessions.add(Session(start: startDt.toEpoch, stop: stopDt.toEpoch, count: 0))
+  
+
+
+
+
 
 dispatchMulti([list], [test], [analyzef])
