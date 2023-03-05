@@ -54,7 +54,7 @@ proc inRange(target: float, value: float, percent: float): bool =
   return false
 
 
-proc buildWindows*(points: iterator(): Point, minLength: float, maxLength: float): iterator(): (bool, seq[Point]) =
+proc toWindows*(points: iterator(): Point, minLength: float, maxLength: float): iterator(): (bool, seq[Point]) =
   # - If the window is not stable in the first 0.1 seconds, start over
   # - If the window is stable for the first 0.1 s, end the window when
 

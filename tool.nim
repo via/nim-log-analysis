@@ -76,7 +76,7 @@ proc test(filename: string): void =
 proc analyzef(filename: string): void =
   let db = openDatabase(filename)
   let rows = get_rows[Point](db, 0, 1800000000000000000)
-  let windows = buildWindows(rows, 0.1, 1.0)
+  let windows = rows.toWindows(0.1, 1.0)
   var valids = 0.0
   for w in windows:
     if w[0]:
