@@ -1,10 +1,3 @@
-
-import tiny_sqlite
-import cligen
-import times
-import std/strformat
-import std/tables
-
 type Point* = object
   realtime_ns: int64
   rpm: uint32
@@ -14,39 +7,14 @@ type Point* = object
   `sensor.ego`: float32
   `sensor.tps`: float32
 
-proc getRows*[T](db: DbConn, start_time: int64, end_time: int64): iterator(): T =
-  when T is Table:
-    let query = &"SELECT * FROM points where _realtime_ns > ? and _realtime_ns < ?"
-    return iterator(): T =
-      yield {"": 1}.toTable
-  else:
-    const example = T()
-    var fieldnames : seq[string]
-    for x, _ in example.fieldPairs:
-      let name = x # Can't use x directly
-      fieldnames.add(&"\"{name}\"")
-    let fieldnames_str = fieldnames.join(", ")
-    let query = &"SELECT realtime_ns AS _realtime_ns, {fieldnames_str} FROM points where _realtime_ns > ? and _realtime_ns < ?"
-
-    return iterator(): T =
-      for row in db.iterate(query, start_time, end_time):
-        var colidx = 1
-        var rowT = T()
-        for name, val in rowT.fieldPairs:
-          val = row[colidx].fromDbValue(typedesc(val))
-          colidx += 1
-        yield rowT
-
 
 type Interest* = object
   duration*: float
-  rpm: float
-  map: float
-  ve: float
-  lambda: float
-  ego: float
-
-type TimeRange = tuple[valid: bool, start: int, stop: int]
+  rpm*: float
+  map*: float
+  ve*: float
+  lambda*: float
+  ego*: float
 
 proc inRange(target: float, value: float, percent: float): bool =
   if abs(target - value) / target * 100 <= percent:
@@ -54,7 +22,7 @@ proc inRange(target: float, value: float, percent: float): bool =
   return false
 
 
-proc buildWindows*(points: iterator(): Point, minLength: float, maxLength: float): iterator(): (bool, seq[Point]) =
+proc toWindows*(points: iterator(): Point, minLength: float, maxLength: float): iterator(): (bool, seq[Point]) =
   # - If the window is not stable in the first 0.1 seconds, start over
   # - If the window is stable for the first 0.1 s, end the window when
 
@@ -73,13 +41,16 @@ proc buildWindows*(points: iterator(): Point, minLength: float, maxLength: float
       let rpm = first.rpm
       let map = first.`sensor.map`
       let tps = first.`sensor.tps`
+      let ego = first.`sensor.ego`
       let was_valid = valid
 
       if not inRange((float)rpm, (float)point.rpm, 5):
         valid = false
-      if not inRange(map, point.`sensor.map`, 5):
+      if not inRange(map, point.`sensor.map`, 2):
         valid = false
-      if not inRange(tps, point.`sensor.tps`, 5):
+      if not inRange(tps, point.`sensor.tps`, 2):
+        valid = false
+      if not inRange(ego, point.`sensor.ego`, 2):
         valid = false
 
       if not valid and (point.realtime_ns - start_time) > (int64)(minLength * 1000000000):
@@ -95,7 +66,7 @@ proc buildWindows*(points: iterator(): Point, minLength: float, maxLength: float
     yield (valid, currentWindow)
 
 
-proc windowToInterest*(points: seq[Point]): Interest =
+proc toInterest*(points: seq[Point]): Interest =
 
   var interest = Interest()
   for point in points:
@@ -114,4 +85,23 @@ proc windowToInterest*(points: seq[Point]): Interest =
   interest.ego /= (float)count
 
   return interest
+
+proc findClosest(val: int, buckets: openArray[int]): int =
+  # find closest rpm
+  var closest = buckets[0]
+  var delta = abs(val - closest)
+  for bucket in buckets:
+    let new_delta = abs(val - bucket)
+    if new_delta <= delta:
+      delta = new_delta
+      closest = bucket
+      continue
+    else:
+      break
+
+  return closest
+
+
+proc toBucket*(interest: Interest, rpms: openArray[int], maps: openArray[int]): (int, int) =
+  return (findClosest((int)interest.rpm, rpms), findClosest((int)interest.map, maps))
 
